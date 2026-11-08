@@ -1,0 +1,344 @@
+'use strict';
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { WebSocketServer } = require('ws');
+
+const INDEX_HTML = "<!doctype html>\n<html lang=\"fr\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">\n<title>Discuter</title>\n<style>\n:root{--bg:#0f1720;--panel:#17212c;--panel2:#1e2a37;--line:#2a3846;--txt:#e8eef4;--mut:#8fa1b3;--acc:#2f9e6f;--acc2:#25805a;--me:#245c47;--red:#e5484d}\n*{box-sizing:border-box;margin:0}\n[hidden]{display:none!important}\nhtml,body{height:100%}\nbody{font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt);overflow:hidden}\nbutton{font:inherit;color:inherit;border:0;background:none;cursor:pointer}\ninput{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;width:100%;outline:none}\ninput:focus{border-color:var(--acc)}\n.screen{height:100%}\n.grow{flex:1;min-width:0}\nsmall{color:var(--mut);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.primary{background:var(--acc);color:#fff;border-radius:12px;padding:12px 16px;font-weight:600}\n.primary:active{background:var(--acc2)}\n.primary:disabled{opacity:.6}\n#auth{display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto}\n.card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px 24px;display:flex;flex-direction:column;gap:14px}\n.logo{font-size:44px;text-align:center}\n.card h1{text-align:center;font-size:26px}\n.tabs{display:flex;background:var(--panel2);border-radius:12px;padding:4px}\n.tabs button{flex:1;padding:10px;border-radius:9px;color:var(--mut);font-weight:600}\n.tabs button.on{background:var(--acc);color:#fff}\nform{display:flex;flex-direction:column;gap:12px}\n.pw{position:relative}\n.pw button{position:absolute;right:6px;top:50%;transform:translateY(-50%);padding:8px}\n.err{color:#ff8e91;font-size:14px}\n.err:empty{display:none}\n.or{display:flex;align-items:center;gap:10px;color:var(--mut);font-size:14px}\n.or:before,.or:after{content:\"\";flex:1;height:1px;background:var(--line)}\n.google{background:#fff;color:#222;border-radius:12px;padding:12px;font-weight:600;display:flex;gap:10px;align-items:center;justify-content:center}\n.google b{font-weight:800;background:conic-gradient(#ea4335 0 25%,#fbbc05 0 50%,#34a853 0 75%,#4285f4 0);-webkit-background-clip:text;background-clip:text;color:transparent;font-size:20px}\n#gSlot{display:flex;justify-content:center}\n#app{display:grid;grid-template-columns:340px 1fr}\naside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}\nheader.bar{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--panel);border-bottom:1px solid var(--line)}\nheader.bar button{font-size:20px;padding:8px;border-radius:10px}\nheader.bar button:hover{background:var(--panel2)}\n.av{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none;color:#fff;position:relative}\n.av.big{width:110px;height:110px;font-size:46px}\n.av.on:after{content:\"\";position:absolute;right:0;bottom:0;width:12px;height:12px;border-radius:50%;background:#3ddc84;border:2px solid var(--panel)}\n.av.big.on:after{display:none}\n#list{overflow:auto;flex:1}\n.item{display:flex;gap:12px;align-items:center;padding:12px 14px;width:100%;text-align:left;border-bottom:1px solid var(--line)}\n.item:hover,.item.on{background:var(--panel2)}\n.item .top{display:flex;justify-content:space-between;gap:8px}\n.item .t{font-size:12px;color:var(--mut)}\n.badge{background:var(--acc);color:#fff;border-radius:99px;font-size:12px;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px;margin-left:6px}\n.noc{padding:24px;color:var(--mut);text-align:center}\nmain#chat{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--bg)}\n#empty{margin:auto;color:var(--mut);padding:30px;text-align:center}\n#conv{display:flex;flex-direction:column;height:100%;min-height:0}\n#back{display:none}\n#msgs{flex:1;overflow:auto;padding:16px 14px;display:flex;flex-direction:column;gap:6px}\n.b{max-width:min(78%,520px);padding:8px 11px;border-radius:14px;background:var(--panel2);align-self:flex-start;word-break:break-word;white-space:pre-wrap}\n.b.me{background:var(--me);align-self:flex-end}\n.b img,.b video{max-width:100%;max-height:320px;border-radius:10px;display:block;cursor:zoom-in}\n.b .ts{font-size:11px;color:var(--mut);text-align:right;margin-top:3px}\n.b a{color:#7cd7ff}\n.sys{align-self:center;font-size:13px;color:var(--mut);background:var(--panel);padding:4px 12px;border-radius:99px}\n#sendForm{display:flex;flex-direction:row;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line)}\n.clip{font-size:22px;cursor:pointer;padding:6px 8px}\n.overlay{position:fixed;inset:0;z-index:50;background:rgba(5,10,15,.78);display:flex;align-items:center;justify-content:center;padding:16px}\n.modal{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;width:100%;max-width:420px;display:flex;flex-direction:column;gap:12px}\n.modal h2{font-size:19px}\n.row{display:flex;gap:10px;align-items:center}\n#call{background:#05090d;padding:0;flex-direction:column;align-items:stretch;justify-content:flex-start}\n.stage{position:relative;flex:1;min-height:0;overflow:hidden}\n#remoteVideo{width:100%;height:100%;object-fit:cover;background:#000}\n.stage.audio #remoteVideo{position:absolute;width:1px;height:1px;opacity:0}\n.callinfo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;pointer-events:none}\n.stage:not(.audio).live .callinfo{inset:0 0 auto 0;justify-content:flex-start;padding:18px;background:linear-gradient(#000a,transparent)}\n.stage:not(.audio).live .callinfo .av{display:none}\n#localVideo{position:absolute;right:12px;bottom:12px;width:28%;max-width:160px;aspect-ratio:3/4;object-fit:cover;border-radius:14px;border:2px solid #fff3;background:#111;transform:scaleX(-1)}\n.ctrls{display:flex;justify-content:center;gap:18px;padding:16px 0 calc(20px + env(safe-area-inset-bottom));background:#0b1219}\n.ctrls button{width:60px;height:60px;border-radius:50%;background:#26343f;font-size:24px}\n.ctrls button.off{background:#fff;color:#000}\n.ctrls .red{background:var(--red)}\n.ctrls .green{background:var(--acc)}\n#lightbox img{max-width:100%;max-height:100%;border-radius:8px}\n#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#000c;border:1px solid var(--line);padding:10px 16px;border-radius:99px;z-index:99;font-size:14px;max-width:90%;text-align:center}\n#net{position:fixed;top:0;left:0;right:0;background:#b7791f;color:#fff;text-align:center;font-size:13px;padding:4px;z-index:60}\n@media(max-width:760px){\n #app{grid-template-columns:1fr}\n #chat{display:none}\n #app.open aside{display:none}\n #app.open #chat{display:flex}\n #back{display:block}\n}\n</style>\n</head>\n<body>\n\n<div id=\"auth\" class=\"screen\" hidden>\n <div class=\"card\">\n  <div class=\"logo\">\ud83d\udcac</div>\n  <h1>Discuter</h1>\n  <div class=\"tabs\">\n   <button type=\"button\" data-tab=\"login\" class=\"on\">Connexion</button>\n   <button type=\"button\" data-tab=\"signup\">Cr\u00e9er un compte</button>\n  </div>\n  <form id=\"authForm\">\n   <input id=\"fName\" placeholder=\"Ton nom\" autocomplete=\"name\" hidden>\n   <input id=\"fEmail\" type=\"email\" placeholder=\"Adresse e-mail\" autocomplete=\"email\" required>\n   <div class=\"pw\"><input id=\"fPw\" type=\"password\" placeholder=\"Mot de passe\" autocomplete=\"current-password\" required><button type=\"button\" id=\"eye\" aria-label=\"Afficher\">\ud83d\udc41</button></div>\n   <input id=\"fPw2\" type=\"password\" placeholder=\"Confirmer le mot de passe\" autocomplete=\"new-password\" hidden>\n   <div id=\"err\" class=\"err\"></div>\n   <button class=\"primary\" id=\"submitBtn\">Se connecter</button>\n  </form>\n  <div class=\"or\">ou</div>\n  <div id=\"gSlot\"></div>\n  <button class=\"google\" id=\"gBtn\" type=\"button\"><b>G</b> Continuer avec Google</button>\n  <button type=\"button\" id=\"setupBtn\" style=\"color:var(--mut);font-size:14px;padding:6px\">\u2699 R\u00e9glages du serveur</button>\n </div>\n</div>\n\n<div id=\"app\" class=\"screen\" hidden>\n <aside>\n  <header class=\"bar\">\n   <div class=\"av\" id=\"meAv\"></div>\n   <div class=\"grow\"><b id=\"meName\"></b><small id=\"meMail\"></small></div>\n   <button id=\"addBtn\" title=\"Ajouter quelqu'un\">\u2795</button>\n   <button id=\"outBtn\" title=\"Se d\u00e9connecter\">\ud83d\udeaa</button>\n  </header>\n  <div id=\"list\"></div>\n </aside>\n <main id=\"chat\">\n  <div id=\"empty\">Choisis une conversation, ou ajoute quelqu'un avec \u2795</div>\n  <div id=\"conv\" hidden>\n   <header class=\"bar\">\n    <button id=\"back\">\u2190</button>\n    <div class=\"av\" id=\"peerAv\"></div>\n    <div class=\"grow\"><b id=\"peerName\"></b><small id=\"peerStatus\"></small></div>\n    <button id=\"callA\" title=\"Appel audio\">\ud83d\udcde</button>\n    <button id=\"callV\" title=\"Appel vid\u00e9o\">\ud83c\udfa5</button>\n   </header>\n   <div id=\"msgs\"></div>\n   <form id=\"sendForm\">\n    <label class=\"clip\" title=\"Photo, vid\u00e9o, fichier\">\ud83d\udcce<input type=\"file\" id=\"file\" multiple hidden></label>\n    <input id=\"txt\" placeholder=\"\u00c9crire un message\" autocomplete=\"off\">\n    <button class=\"primary\">\u27a4</button>\n   </form>\n  </div>\n </main>\n</div>\n\n<div id=\"modal\" class=\"overlay\" hidden>\n <div class=\"modal\">\n  <h2>Ajouter quelqu'un</h2>\n  <form id=\"addForm\"><div class=\"row\"><input id=\"addMail\" type=\"email\" placeholder=\"E-mail de la personne\" required><button class=\"primary\">Ajouter</button></div></form>\n  <div id=\"addErr\" class=\"err\"></div>\n  <button id=\"closeModal\" type=\"button\" style=\"padding:10px;color:var(--mut)\">Fermer</button>\n </div>\n</div>\n\n<div id=\"incoming\" class=\"overlay\" hidden>\n <div class=\"modal\" style=\"align-items:center;text-align:center\">\n  <div class=\"av big\" id=\"inAv\"></div>\n  <h2 id=\"inName\"></h2>\n  <p id=\"inType\" style=\"color:var(--mut)\"></p>\n  <div class=\"ctrls\" style=\"background:none;padding:10px 0 0\">\n   <button id=\"inNo\" class=\"red\">\ud83d\udcde</button>\n   <button id=\"inYes\" class=\"green\">\ud83d\udcde</button>\n  </div>\n </div>\n</div>\n\n<div id=\"call\" class=\"overlay\" hidden>\n <div class=\"stage audio\" id=\"stage\">\n  <video id=\"remoteVideo\" autoplay playsinline></video>\n  <div class=\"callinfo\"><div class=\"av big\" id=\"callAv\"></div><h2 id=\"callName\"></h2><p id=\"callStatus\"></p><p id=\"callNote\" style=\"font-size:13px;color:#f0b35a;max-width:300px\"></p></div>\n  <video id=\"localVideo\" autoplay playsinline muted></video>\n </div>\n <div class=\"ctrls\">\n  <button id=\"bMic\" title=\"Micro\">\ud83c\udfa4</button>\n  <button id=\"bCam\" title=\"Cam\u00e9ra\">\ud83d\udcf7</button>\n  <button id=\"bEnd\" class=\"red\" title=\"Raccrocher\">\ud83d\udcde</button>\n </div>\n</div>\n\n<div id=\"setup\" class=\"overlay\" hidden style=\"z-index:70;overflow:auto\">\n <div class=\"modal\">\n  <h2>\u2699 Serveur</h2>\n  <p style=\"color:var(--mut);font-size:14px\">Les messages et les appels passent par un serveur (gratuit sur Render). Colle ici son adresse.</p>\n  <input id=\"srvUrl\" type=\"url\" placeholder=\"https://mon-app.onrender.com\" autocapitalize=\"off\" autocorrect=\"off\">\n  <div id=\"srvErr\" class=\"err\"></div>\n  <button class=\"primary\" id=\"srvSave\" type=\"button\">Enregistrer et se connecter</button>\n  <div id=\"zipBox\" hidden style=\"border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px\">\n   <b>Pas encore de serveur ?</b>\n   <button class=\"primary\" id=\"zipBtn\" type=\"button\" style=\"background:#3b6ea8\">\u2b07 T\u00e9l\u00e9charger le serveur (zip)</button>\n   <ol style=\"font-size:13.5px;color:var(--mut);padding-left:18px;line-height:1.6\">\n    <li>D\u00e9zippe le fichier et mets son contenu sur un d\u00e9p\u00f4t GitHub.</li>\n    <li>Sur render.com : New + > Web Service > choisis ton d\u00e9p\u00f4t.</li>\n    <li>Build : <code>npm install</code> \u00b7 Start : <code>node server.js</code></li>\n    <li>Copie l'adresse https que Render te donne et colle-la ci-dessus.</li>\n   </ol>\n  </div>\n  <button id=\"srvClose\" type=\"button\" style=\"padding:10px;color:var(--mut)\">Fermer</button>\n </div>\n</div>\n\n<div id=\"lightbox\" class=\"overlay\" hidden></div>\n<div id=\"net\" hidden>Reconnexion au serveur\u2026</div>\n<div id=\"toast\" hidden></div>\n\n<script>\n'use strict';\nconst $ = s => document.querySelector(s);\nlet token = localStorage.getItem('token');\nlet BASE = (localStorage.getItem('server') || '').replace(/\\/+$/, '');   // vide = m\u00eame adresse que la page\nconst furl = u => BASE + u;\nconst ZIP_B64 = '';   // rempli dans la version \u00ab tout-en-un \u00bb\nlet me = null, contacts = [], msgs = new Map(), online = new Set(), current = null, unread = {};\nlet ws = null, wsTry = 0, cfg = {googleClientId: '', iceServers: [{urls: 'stun:stun.l.google.com:19302'}]};\n\n/* ---------- utilitaires ---------- */\nlet toastT;\nfunction toast(t, ms = 3500){ const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, ms); }\nconst initials = n => (n || '?').trim().slice(0, 1).toUpperCase();\nfunction colorOf(s){ let h = 0; for(const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 55% 42%)`; }\nfunction setAv(el, u){ el.textContent = initials(u.name); el.style.background = colorOf(u.email); }\nconst fmtTime = ts => new Date(ts).toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'});\nconst fmtDur = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;\nfunction h(tag, cls, text){ const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }\nconst sizeStr = b => b > 1e6 ? (b / 1e6).toFixed(1) + ' Mo' : Math.max(1, Math.round(b / 1e3)) + ' Ko';\nconst userOf = email => contacts.find(c => c.email === email) || {email, name: email};\n\nasync function api(path, opts = {}){\n  const headers = Object.assign({}, opts.headers || {});\n  if(token) headers.Authorization = 'Bearer ' + token;\n  if(typeof opts.body === 'string') headers['Content-Type'] = 'application/json';\n  let r;\n  try{ r = await fetch(BASE + path, Object.assign({}, opts, {headers})); }\n  catch{ throw new Error('Serveur injoignable. V\u00e9rifie ta connexion.'); }\n  let j = {}; try{ j = await r.json(); }catch{}\n  if(!r.ok){ const e = new Error(j.error || 'Erreur serveur'); e.status = r.status; throw e; }\n  return j;\n}\n\n/* ---------- connexion / inscription ---------- */\nlet mode = 'login';\ndocument.querySelectorAll('.tabs button').forEach(b => b.onclick = () => setMode(b.dataset.tab));\nfunction setMode(m){\n  mode = m;\n  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === m));\n  $('#fName').hidden = $('#fPw2').hidden = m !== 'signup';\n  $('#fName').required = $('#fPw2').required = m === 'signup';\n  $('#fPw').autocomplete = m === 'signup' ? 'new-password' : 'current-password';\n  $('#submitBtn').textContent = m === 'signup' ? 'Cr\u00e9er mon compte' : 'Se connecter';\n  $('#err').textContent = '';\n}\n$('#eye').onclick = () => { const p = $('#fPw'); p.type = p.type === 'password' ? 'text' : 'password'; $('#fPw2').type = p.type; };\n\n$('#authForm').onsubmit = async e => {\n  e.preventDefault();\n  const err = t => $('#err').textContent = t;\n  const pw = $('#fPw').value;\n  if(mode === 'signup' && pw !== $('#fPw2').value) return err('Les deux mots de passe sont diff\u00e9rents.');\n  const btn = $('#submitBtn'); btn.disabled = true; err('');\n  try{\n    const j = await api(mode === 'signup' ? '/api/signup' : '/api/login', {method: 'POST', body: JSON.stringify({\n      name: $('#fName').value.trim(), email: $('#fEmail').value.trim(), password: pw})});\n    token = j.token; localStorage.setItem('token', token); await boot();\n  }catch(ex){ err(ex.message); }\n  btn.disabled = false;\n};\n\nasync function googleCallback(r){\n  try{\n    const j = await api('/api/google', {method: 'POST', body: JSON.stringify({credential: r.credential})});\n    token = j.token; localStorage.setItem('token', token); await boot();\n  }catch(ex){ $('#err').textContent = ex.message; }\n}\nfunction setupGoogle(){\n  if(!cfg.googleClientId){\n    $('#gBtn').onclick = () => $('#err').textContent = \"La connexion Google n'est pas encore activ\u00e9e sur ce serveur (voir le README).\";\n    return;\n  }\n  $('#gBtn').hidden = true;\n  const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;\n  s.onload = () => {\n    google.accounts.id.initialize({client_id: cfg.googleClientId, callback: googleCallback});\n    google.accounts.id.renderButton($('#gSlot'), {theme: 'outline', size: 'large', width: 300, text: 'continue_with', locale: 'fr'});\n  };\n  s.onerror = () => { $('#gBtn').hidden = false; $('#gBtn').onclick = () => $('#err').textContent = 'Impossible de charger Google.'; };\n  document.head.appendChild(s);\n}\n\nasync function boot(){\n  try{\n    const j = await api('/api/me');\n    me = j.user; contacts = j.contacts;\n  }catch(ex){\n    token = null; localStorage.removeItem('token'); me = null;\n    $('#app').hidden = true; $('#auth').hidden = false; return;\n  }\n  $('#auth').hidden = true; $('#app').hidden = false;\n  setAv($('#meAv'), me); $('#meName').textContent = me.name; $('#meMail').textContent = me.email;\n  current = null; unread = {}; msgs = new Map(); online = new Set();\n  $('#app').classList.remove('open'); $('#conv').hidden = true; $('#empty').hidden = false;\n  await loadHistory(); renderList(); connect();\n}\nasync function loadHistory(){\n  try{ const j = await api('/api/history'); j.messages.forEach(m => msgs.set(m.id, m)); }catch{}\n}\n$('#outBtn').onclick = async () => {\n  hangup(true);\n  try{ await api('/api/logout', {method: 'POST'}); }catch{}\n  token = null; localStorage.removeItem('token'); me = null; current = null;\n  if(ws){ ws.onclose = null; ws.close(); ws = null; }\n  $('#app').hidden = true; $('#auth').hidden = false;\n  $('#fPw').value = $('#fPw2').value = ''; setMode('login');\n};\n\n/* ---------- connexion temps r\u00e9el ---------- */\nfunction connect(){\n  if(!token || !me) return;\n  const root = (BASE || location.origin).replace(/^http/, 'ws');\n  ws = new WebSocket(`${root}/ws?token=${token}`);\n  ws.onopen = () => { wsTry = 0; $('#net').hidden = true; };\n  ws.onmessage = e => { try{ onWs(JSON.parse(e.data)); }catch(ex){ console.error(ex); } };\n  ws.onclose = () => {\n    if(!me) return;\n    $('#net').hidden = false;\n    if(pc && !connectedAt) hangup(false);\n    wsTry++; setTimeout(async () => { if(me){ await loadHistory(); renderList(); if(current) renderChat(); connect(); } }, Math.min(1000 * wsTry, 8000));\n  };\n}\nfunction wsSend(o){\n  if(ws && ws.readyState === 1){ ws.send(JSON.stringify(o)); return true; }\n  toast('Pas de connexion au serveur, r\u00e9essaie dans un instant.'); return false;\n}\nfunction onWs(m){\n  switch(m.t){\n    case 'hello': online = new Set(m.online); renderList(); updateHeader(); break;\n    case 'presence': m.online ? online.add(m.email) : online.delete(m.email); renderList(); updateHeader(); break;\n    case 'contact':\n      if(!contacts.find(c => c.email === m.contact.email)) contacts.push(m.contact);\n      if(m.online) online.add(m.contact.email);\n      renderList(); toast(m.contact.name + ' t\\'a ajout\u00e9'); break;\n    case 'msg': {\n      msgs.set(m.m.id, m.m);\n      const other = m.m.from === me.email ? m.m.to : m.m.from;\n      if(!contacts.find(c => c.email === other)) break;\n      if(m.m.from !== me.email && m.m.kind !== 'call' && current !== other) unread[other] = (unread[other] || 0) + 1;\n      if(current === other) renderChat();\n      renderList(); break;\n    }\n    case 'offer': onOffer(m); break;\n    case 'answer': onAnswer(m); break;\n    case 'ice': addIce(m.from, m.candidate); break;\n    case 'end':\n      if(pending && pending.from === m.from){ pending = null; $('#incoming').hidden = true; toast('Appel manqu\u00e9'); }\n      else if(callPeer === m.from) hangup(false);\n      break;\n    case 'reject': if(callPeer === m.from){ toast('Appel refus\u00e9'); hangup(false); } break;\n    case 'busy': if(callPeer === m.from){ toast(userOf(m.from).name + ' est d\u00e9j\u00e0 en appel'); hangup(false); } break;\n    case 'unavailable': if(callPeer === m.from){ toast(userOf(m.from).name + \" n'est pas en ligne\"); hangup(false); } break;\n    case 'taken': if(pending){ pending = null; $('#incoming').hidden = true; } break;\n  }\n}\n\n/* ---------- contacts ---------- */\n$('#addBtn').onclick = () => { $('#addErr').textContent = ''; $('#addMail').value = ''; $('#modal').hidden = false; $('#addMail').focus(); };\n$('#closeModal').onclick = () => $('#modal').hidden = true;\n$('#addForm').onsubmit = async e => {\n  e.preventDefault();\n  try{\n    const j = await api('/api/contacts', {method: 'POST', body: JSON.stringify({email: $('#addMail').value.trim()})});\n    if(!contacts.find(c => c.email === j.contact.email)) contacts.push(j.contact);\n    if(j.online) online.add(j.contact.email);\n    $('#modal').hidden = true; renderList(); openChat(j.contact.email);\n  }catch(ex){ $('#addErr').textContent = ex.message; }\n};\n\n/* ---------- liste & conversation ---------- */\nfunction lastOf(peer){\n  let l = null;\n  for(const m of msgs.values()) if((m.from === peer && m.to === me.email) || (m.to === peer && m.from === me.email)) if(!l || m.id > l.id) l = m;\n  return l;\n}\nfunction preview(m){\n  if(!m) return 'Dis bonjour \ud83d\udc4b';\n  const p = m.from === me.email ? 'Toi : ' : '';\n  if(m.kind === 'text') return p + m.text;\n  if(m.kind === 'image') return p + '\ud83d\udcf7 Photo';\n  if(m.kind === 'video') return p + '\ud83c\udfac Vid\u00e9o';\n  if(m.kind === 'call') return '\ud83d\udcde ' + m.text;\n  return p + '\ud83d\udcce ' + (m.file?.name || 'Fichier');\n}\nfunction renderList(){\n  if(!me) return;\n  const box = $('#list'); box.innerHTML = '';\n  const list = contacts.map(u => ({u, l: lastOf(u.email)})).sort((a, b) => (b.l?.ts || 0) - (a.l?.ts || 0));\n  if(!list.length){ box.appendChild(h('div', 'noc', 'Aucun contact. Appuie sur \u2795 pour ajouter quelqu\\'un avec son e-mail.')); return; }\n  list.forEach(({u, l}) => {\n    const it = h('button', 'item' + (current === u.email ? ' on' : ''));\n    const av = h('div', 'av' + (online.has(u.email) ? ' on' : '')); setAv(av, u);\n    const body = h('div', 'grow');\n    const top = h('div', 'top'); top.append(h('b', null, u.name), h('span', 't', l ? fmtTime(l.ts) : ''));\n    const sub = h('div', 'top'); sub.appendChild(h('small', null, preview(l)));\n    if(unread[u.email]) sub.appendChild(h('span', 'badge', unread[u.email]));\n    body.append(top, sub); it.append(av, body);\n    it.onclick = () => openChat(u.email);\n    box.appendChild(it);\n  });\n}\nfunction updateHeader(){\n  if(!current) return;\n  const u = userOf(current);\n  $('#peerAv').classList.toggle('on', online.has(current));\n  $('#peerStatus').textContent = online.has(current) ? 'en ligne' : 'hors ligne';\n  setAv($('#peerAv'), u);\n}\nfunction openChat(email){\n  current = email; unread[email] = 0;\n  $('#peerName').textContent = userOf(email).name;\n  updateHeader();\n  $('#empty').hidden = true; $('#conv').hidden = false; $('#app').classList.add('open');\n  renderChat(); renderList();\n}\n$('#back').onclick = () => { current = null; $('#app').classList.remove('open'); $('#conv').hidden = true; $('#empty').hidden = false; renderList(); };\n\nfunction renderChat(){\n  const box = $('#msgs'); box.innerHTML = '';\n  [...msgs.values()].filter(m => (m.from === me.email && m.to === current) || (m.from === current && m.to === me.email))\n    .sort((a, b) => a.id - b.id).forEach(m => {\n      if(m.kind === 'call'){ box.appendChild(h('div', 'sys', `\ud83d\udcde ${m.text} \u00b7 ${fmtTime(m.ts)}`)); return; }\n      const b = h('div', 'b' + (m.from === me.email ? ' me' : ''));\n      if(m.kind === 'text') b.appendChild(h('div', null, m.text));\n      else if(m.kind === 'image'){\n        const i = document.createElement('img'); i.src = furl(m.file.url); i.alt = m.file.name || ''; i.loading = 'lazy';\n        i.onclick = () => { const lb = $('#lightbox'); lb.innerHTML = ''; const x = document.createElement('img'); x.src = i.src; lb.appendChild(x); lb.hidden = false; };\n        b.appendChild(i);\n      } else if(m.kind === 'video'){\n        const v = document.createElement('video'); v.src = furl(m.file.url); v.controls = true; v.playsInline = true; v.preload = 'metadata'; b.appendChild(v);\n      } else {\n        const a = document.createElement('a'); a.href = furl(m.file.url); a.download = m.file.name || 'fichier';\n        a.textContent = `\ud83d\udcce ${m.file.name || 'Fichier'} (${sizeStr(m.file.size || 0)})`; b.appendChild(a);\n      }\n      b.appendChild(h('div', 'ts', fmtTime(m.ts)));\n      box.appendChild(b);\n    });\n  box.scrollTop = box.scrollHeight;\n}\n$('#lightbox').onclick = () => $('#lightbox').hidden = true;\n\n$('#sendForm').onsubmit = e => {\n  e.preventDefault();\n  const t = $('#txt').value.trim(); if(!t || !current) return;\n  if(wsSend({t: 'msg', to: current, kind: 'text', text: t})) $('#txt').value = '';\n};\n$('#file').onchange = async e => {\n  const files = [...e.target.files], peer = current; e.target.value = '';\n  for(const f of files){\n    if(f.size > 25e6){ toast(`\u00ab ${f.name} \u00bb d\u00e9passe 25 Mo`); continue; }\n    toast(`Envoi de ${f.name}\u2026`);\n    try{\n      const up = await api(`/upload?name=${encodeURIComponent(f.name)}&type=${encodeURIComponent(f.type || 'application/octet-stream')}`, {method: 'POST', body: f});\n      const kind = /^image\\/(?!svg)/.test(up.type) ? 'image' : up.type.startsWith('video/') ? 'video' : 'file';\n      wsSend({t: 'msg', to: peer, kind, file: {url: up.url}});\n    }catch(ex){ toast(ex.message); }\n  }\n};\n\n/* ---------- appels (WebRTC, signalisation via le serveur) ---------- */\nlet pc = null, localStream = null, callPeer = null, isCaller = false, pending = null;\nlet connectedAt = 0, timerInt = null, ringTO = null, iceQueue = [], callVideo = false;\n\nlet mediaNote = '';\nfunction explainMediaError(e){\n  const n = e && e.name;\n  if(n === 'NotAllowedError' || n === 'SecurityError') return \"Autorisation refus\u00e9e. Clique sur le cadenas \ud83d\udd12 \u00e0 c\u00f4t\u00e9 de l'adresse, autorise le micro et la cam\u00e9ra, puis recharge la page.\";\n  if(n === 'NotFoundError' || n === 'OverconstrainedError') return 'Aucun micro ni cam\u00e9ra trouv\u00e9 sur cet appareil.';\n  if(n === 'NotReadableError' || n === 'AbortError') return 'Micro ou cam\u00e9ra d\u00e9j\u00e0 utilis\u00e9s par une autre application.';\n  return \"Impossible d'acc\u00e9der au micro ou \u00e0 la cam\u00e9ra.\";\n}\n// Essaie le maximum : micro+cam\u00e9ra, puis micro seul, puis cam\u00e9ra seule. Ne renvoie jamais null :\n// si rien n'est autoris\u00e9, l'appel continue en mode \u00ab \u00e9coute \u00bb (tu vois/entends l'autre personne).\nasync function getMedia(wantVideo){\n  mediaNote = '';\n  const md = navigator.mediaDevices;\n  if(!md || !md.getUserMedia){\n    mediaNote = window.isSecureContext\n      ? \"Ce navigateur ne peut pas utiliser le micro. Essaie Chrome, Edge, Firefox ou Safari.\"\n      : \"Micro et cam\u00e9ra bloqu\u00e9s : ouvre le site avec une adresse en https:// (pas dans l'aper\u00e7u d'une autre appli).\";\n    toast(mediaNote, 7000); return new MediaStream();\n  }\n  const tries = wantVideo ? [{audio: true, video: true}, {audio: true}, {video: true}] : [{audio: true}];\n  let firstErr = null;\n  for(const c of tries){\n    try{\n      const s = await md.getUserMedia(c);\n      const a = s.getAudioTracks().length > 0, v = s.getVideoTracks().length > 0, notes = [];\n      if(wantVideo && !v) notes.push('Cam\u00e9ra indisponible');\n      if(!a) notes.push(\"Micro indisponible (on ne t'entend pas)\");\n      if(notes.length){\n        mediaNote = notes.join(' \u00b7 ') + (firstErr ? ' \u2014 ' + explainMediaError(firstErr) : '');\n        toast(mediaNote, 7000);\n      }\n      return s;\n    }catch(e){\n      console.warn('getUserMedia', c, e);\n      if(!firstErr || e.name === 'NotAllowedError') firstErr = e;\n    }\n  }\n  mediaNote = explainMediaError(firstErr) + ' Tu peux quand m\u00eame voir et entendre l\\'autre personne.';\n  toast(mediaNote, 9000);\n  return new MediaStream();\n}\nasync function addIce(from, c){\n  if(!c) return;\n  if(pc && pc.remoteDescription && callPeer === from){ try{ await pc.addIceCandidate(c); }catch{} }\n  else iceQueue.push({from, c});\n}\nasync function flushIce(){\n  const q = iceQueue; iceQueue = [];\n  for(const x of q) if(x.from === callPeer){ try{ await pc.addIceCandidate(x.c); }catch{} }\n}\nfunction playRemote(){\n  $('#remoteVideo').play().catch(() => toast(\"Touche l'\u00e9cran pour activer le son\"));\n}\n$('#call').addEventListener('click', () => { const v = $('#remoteVideo'); if(v.paused) v.play().catch(() => {}); });\nfunction setupPC(wantVideo){\n  pc = new RTCPeerConnection({iceServers: cfg.iceServers});\n  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));\n  // sans micro/cam\u00e9ra local, on demande quand m\u00eame \u00e0 recevoir l'audio (et la vid\u00e9o si c'est un appel vid\u00e9o)\n  if(!localStream.getAudioTracks().length) pc.addTransceiver('audio', {direction: 'recvonly'});\n  if(wantVideo && !localStream.getVideoTracks().length) pc.addTransceiver('video', {direction: 'recvonly'});\n  const peer = callPeer;\n  pc.onicecandidate = e => { if(e.candidate) wsSend({t: 'ice', to: peer, candidate: e.candidate}); };\n  pc.ontrack = e => {\n    const s = e.streams[0]; const rv = $('#remoteVideo');\n    if(rv.srcObject !== s) rv.srcObject = s;\n    const upd = () => $('#stage').classList.toggle('audio', s.getVideoTracks().length === 0);\n    upd(); s.onaddtrack = upd; playRemote();\n  };\n  pc.onconnectionstatechange = () => {\n    if(!pc) return;\n    if(pc.connectionState === 'connected' && !connectedAt){\n      connectedAt = Date.now(); clearTimeout(ringTO); $('#stage').classList.add('live'); playRemote();\n      timerInt = setInterval(() => $('#callStatus').textContent = fmtDur(Math.round((Date.now() - connectedAt) / 1000)), 500);\n    }\n    if(pc.connectionState === 'failed'){ toast('Connexion perdue'); hangup(true); }\n  };\n}\nfunction showCall(peer, status){\n  const u = userOf(peer);\n  setAv($('#callAv'), u); $('#callName').textContent = u.name; $('#callStatus').textContent = status;\n  $('#stage').classList.remove('live'); $('#stage').classList.add('audio');\n  const lv = $('#localVideo'); lv.srcObject = localStream;\n  const hasV = localStream.getVideoTracks().length > 0;\n  lv.hidden = !hasV; $('#bCam').hidden = !hasV;\n  $('#bMic').hidden = !localStream.getAudioTracks().length;\n  $('#callNote').textContent = mediaNote;\n  $('#bMic').classList.remove('off'); $('#bCam').classList.remove('off');\n  $('#call').hidden = false;\n}\nasync function startCall(video){\n  if(pc || pending || !current) return;\n  const peer = current;\n  if(!ws || ws.readyState !== 1) return toast('Pas de connexion au serveur.');\n  localStream = await getMedia(video);\n  callPeer = peer; isCaller = true; callVideo = !!video; connectedAt = 0; iceQueue = [];\n  setupPC(callVideo); showCall(peer, 'Appel en cours\u2026');\n  const off = await pc.createOffer(); await pc.setLocalDescription(off);\n  wsSend({t: 'offer', to: peer, video: callVideo, sdp: {type: off.type, sdp: off.sdp}});\n  ringTO = setTimeout(() => { if(pc && !connectedAt){ toast('Pas de r\u00e9ponse'); hangup(true); } }, 45000);\n}\n$('#callA').onclick = () => startCall(false);\n$('#callV').onclick = () => startCall(true);\n\nfunction onOffer(o){\n  if(pc || pending){ wsSend({t: 'reject', to: o.from}); return; }\n  pending = o; iceQueue = [];\n  const u = userOf(o.from);\n  setAv($('#inAv'), u); $('#inName').textContent = u.name;\n  $('#inType').textContent = o.video ? 'Appel vid\u00e9o entrant\u2026' : 'Appel audio entrant\u2026';\n  $('#incoming').hidden = false;\n  if(navigator.vibrate) navigator.vibrate([300, 200, 300]);\n}\n$('#inNo').onclick = () => {\n  if(!pending) return;\n  wsSend({t: 'reject', to: pending.from});\n  pending = null; $('#incoming').hidden = true;\n};\n$('#inYes').onclick = async () => {\n  const o = pending; if(!o) return;\n  pending = null; $('#incoming').hidden = true;\n  localStream = await getMedia(o.video);\n  callPeer = o.from; isCaller = false; callVideo = !!o.video; connectedAt = 0;\n  setupPC(callVideo); showCall(o.from, 'Connexion\u2026');\n  await pc.setRemoteDescription(o.sdp); await flushIce();\n  const a = await pc.createAnswer(); await pc.setLocalDescription(a);\n  wsSend({t: 'answer', to: o.from, sdp: {type: a.type, sdp: a.sdp}});\n};\nasync function onAnswer(m){\n  if(pc && callPeer === m.from && !pc.currentRemoteDescription){\n    await pc.setRemoteDescription(m.sdp); await flushIce();\n    $('#callStatus').textContent = 'Connexion\u2026';\n  }\n}\n$('#bMic').onclick = () => {\n  const t = localStream?.getAudioTracks()[0]; if(!t) return;\n  t.enabled = !t.enabled; $('#bMic').classList.toggle('off', !t.enabled);\n};\n$('#bCam').onclick = () => {\n  const t = localStream?.getVideoTracks()[0]; if(!t) return;\n  t.enabled = !t.enabled; $('#bCam').classList.toggle('off', !t.enabled);\n};\n$('#bEnd').onclick = () => hangup(true);\n\nfunction hangup(notify){\n  if(!pc && !localStream) return;\n  const peer = callPeer, caller = isCaller;\n  const dur = connectedAt ? Math.round((Date.now() - connectedAt) / 1000) : 0;\n  const wasVideo = callVideo;\n  if(notify && peer && ws && ws.readyState === 1) ws.send(JSON.stringify({t: 'end', to: peer}));\n  clearInterval(timerInt); clearTimeout(ringTO);\n  try{ localStream?.getTracks().forEach(t => t.stop()); }catch{}\n  try{ pc?.close(); }catch{}\n  pc = null; localStream = null; callPeer = null; isCaller = false; connectedAt = 0; iceQueue = [];\n  $('#remoteVideo').srcObject = null; $('#localVideo').srcObject = null; $('#call').hidden = true;\n  if(caller && peer){\n    const text = dur ? `${wasVideo ? 'Appel vid\u00e9o' : 'Appel audio'} \u00b7 ${fmtDur(dur)}` : 'Appel manqu\u00e9';\n    if(ws && ws.readyState === 1) ws.send(JSON.stringify({t: 'msg', to: peer, kind: 'call', text}));\n  }\n}\nwindow.addEventListener('beforeunload', () => { if(pc && callPeer && ws && ws.readyState === 1) ws.send(JSON.stringify({t: 'end', to: callPeer})); });\n\n/* ---------- d\u00e9marrage ---------- */\nif(!window.isSecureContext) setTimeout(() => toast('Pour utiliser micro et cam\u00e9ra, ouvre le site en https://', 8000), 800);\nfunction openSetup(msg){\n  $('#srvUrl').value = BASE; $('#srvErr').textContent = msg || '';\n  $('#zipBox').hidden = !ZIP_B64; $('#setup').hidden = false;\n}\n$('#setupBtn').onclick = () => openSetup();\n$('#srvClose').onclick = () => $('#setup').hidden = true;\n$('#srvSave').onclick = async () => {\n  let u = $('#srvUrl').value.trim().replace(/\\/+$/, '');\n  if(u && !/^https?:\\/\\//i.test(u)) u = 'https://' + u;\n  const old = BASE; BASE = u;\n  $('#srvErr').textContent = 'Connexion\u2026';\n  try{\n    await api('/api/config');\n    localStorage.setItem('server', BASE); location.reload();\n  }catch{ BASE = old; $('#srvErr').textContent = \"Impossible de joindre ce serveur. V\u00e9rifie l'adresse (le premier r\u00e9veil sur Render peut prendre 1 minute : r\u00e9essaie).\"; }\n};\n$('#zipBtn').onclick = () => {\n  const bin = atob(ZIP_B64), arr = new Uint8Array(bin.length);\n  for(let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);\n  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([arr], {type: 'application/zip'}));\n  a.download = 'discuter-serveur.zip'; document.body.appendChild(a); a.click(); a.remove();\n};\n(async function(){\n  let ok = true;\n  try{ cfg = await api('/api/config'); }catch{ ok = false; }\n  setupGoogle();\n  if(token && ok) await boot(); else $('#auth').hidden = false;\n  if(!ok) openSetup(location.protocol === 'file:' ? '' : \"Serveur injoignable. V\u00e9rifie l'adresse ou r\u00e9essaie dans une minute.\");\n})();\n</script>\n</body>\n</html>\n";
+const PORT = process.env.PORT || 3000;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
+const MAX_UPLOAD = 25 * 1024 * 1024;
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+/* ---------- mini base de données (fichier JSON) ---------- */
+const DB_FILE = path.join(DATA_DIR, 'db.json');
+let db = { users: {}, sessions: {}, contacts: {}, messages: [], files: {}, nextId: 1 };
+try { db = Object.assign(db, JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))); } catch {}
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const tmp = DB_FILE + '.tmp';
+    fs.writeFile(tmp, JSON.stringify(db), err => { if (!err) fs.rename(tmp, DB_FILE, () => {}); });
+  }, 300);
+}
+// nettoie les sessions de plus de 90 jours
+for (const [t, s] of Object.entries(db.sessions)) if (Date.now() - s.ts > 90 * 864e5) delete db.sessions[t];
+
+/* ---------- utilitaires ---------- */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const pub = u => ({ email: u.email, name: u.name });
+const hashPw = (pw, salt) => new Promise((res, rej) => crypto.scrypt(pw, salt, 64, (e, k) => e ? rej(e) : res(k.toString('hex'))));
+function newSession(email) {
+  const t = crypto.randomBytes(32).toString('hex');
+  db.sessions[t] = { email, ts: Date.now() };
+  save();
+  return t;
+}
+function sessionUser(token) {
+  const s = db.sessions[token];
+  return s && db.users[s.email] ? db.users[s.email] : null;
+}
+function tokenOf(req, url) {
+  const h = req.headers.authorization || '';
+  return h.startsWith('Bearer ') ? h.slice(7) : url.searchParams.get('token') || '';
+}
+function send(res, code, obj) {
+  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(obj));
+}
+function readBody(req, limit) {
+  return new Promise((resolve, reject) => {
+    const chunks = []; let n = 0;
+    req.on('data', c => {
+      n += c.length;
+      if (n > limit) { reject(Object.assign(new Error('Fichier trop gros'), { code: 413 })); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+async function readJson(req) {
+  const b = await readBody(req, 100 * 1024);
+  try { return JSON.parse(b.toString('utf8') || '{}'); } catch { return {}; }
+}
+const hits = new Map();
+function limited(req) {
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
+  const now = Date.now();
+  const a = (hits.get(ip) || []).filter(t => now - t < 60000);
+  a.push(now); hits.set(ip, a);
+  return a.length > 15;
+}
+function iceServers() {
+  const list = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+  if (process.env.TURN_URL) {
+    list.push({ urls: process.env.TURN_URL.split(',').map(s => s.trim()), username: process.env.TURN_USERNAME || '', credential: process.env.TURN_CREDENTIAL || '' });
+  }
+  return list;
+}
+const isContact = (a, b) => (db.contacts[a] || []).includes(b);
+function linkContacts(a, b) {
+  for (const [x, y] of [[a, b], [b, a]]) {
+    const l = db.contacts[x] || (db.contacts[x] = []);
+    if (!l.includes(y)) l.push(y);
+  }
+  save();
+}
+
+/* ---------- WebSocket : présence, messages, signalisation d'appel ---------- */
+const socks = new Map();   // email -> Set<ws>
+const busy = new Map();    // email -> { peer, ts }
+const emit = (email, obj, except) => {
+  const s = socks.get(email); if (!s) return;
+  const data = JSON.stringify(obj);
+  for (const w of s) if (w !== except && w.readyState === 1) w.send(data);
+};
+const isBusy = e => { const b = busy.get(e); return b && Date.now() - b.ts < 2 * 3600e3; };
+function endCall(a) {
+  const b = busy.get(a); if (!b) return null;
+  busy.delete(a);
+  if (busy.get(b.peer)?.peer === a) busy.delete(b.peer);
+  return b.peer;
+}
+function announcePresence(email, online) {
+  for (const c of db.contacts[email] || []) emit(c, { t: 'presence', email, online });
+}
+function storeMessage(from, to, kind, text, file) {
+  const m = { id: db.nextId++, from, to, kind, text: text || '', file: file || null, ts: Date.now() };
+  db.messages.push(m); save();
+  emit(to, { t: 'msg', m });
+  emit(from, { t: 'msg', m });
+}
+
+function onWsMessage(ws, raw) {
+  let m; try { m = JSON.parse(raw); } catch { return; }
+  const me = ws.email;
+  const to = typeof m.to === 'string' ? m.to : '';
+  if (!to || !isContact(me, to)) return;
+  switch (m.t) {
+    case 'msg': {
+      const kind = ['text', 'image', 'video', 'file', 'call'].includes(m.kind) ? m.kind : 'text';
+      let file = null;
+      if (kind === 'image' || kind === 'video' || kind === 'file') {
+        const id = String(m.file?.url || '').replace('/uploads/', '');
+        const f = db.files[id];
+        if (!f) return;
+        file = { url: '/uploads/' + id, name: f.name, size: f.size, type: f.type };
+      }
+      const text = String(m.text || '').slice(0, 4000);
+      if (kind === 'text' && !text.trim()) return;
+      storeMessage(me, to, kind, text, file);
+      break;
+    }
+    case 'offer':
+      if (!socks.has(to)) { emit(me, { t: 'unavailable', from: to }); return; }
+      if (isBusy(me) || isBusy(to)) { emit(me, { t: 'busy', from: to }); return; }
+      busy.set(me, { peer: to, ts: Date.now() });
+      busy.set(to, { peer: me, ts: Date.now() });
+      emit(to, { t: 'offer', from: me, video: !!m.video, sdp: m.sdp });
+      break;
+    case 'answer':
+      if (busy.get(me)?.peer !== to) return;
+      emit(me, { t: 'taken' }, ws);          // les autres appareils arrêtent de sonner
+      emit(to, { t: 'answer', from: me, sdp: m.sdp });
+      break;
+    case 'ice':
+      if (busy.get(me)?.peer !== to) return;
+      emit(to, { t: 'ice', from: me, candidate: m.candidate });
+      break;
+    case 'end':
+    case 'reject':
+      if (busy.get(me)?.peer === to) endCall(me);
+      emit(to, { t: m.t, from: me });
+      emit(me, { t: 'taken' }, ws);
+      break;
+  }
+}
+
+function onWsConnection(ws, user) {
+  ws.email = user.email; ws.alive = true;
+  const first = !socks.has(user.email);
+  if (first) socks.set(user.email, new Set());
+  socks.get(user.email).add(ws);
+  ws.on('pong', () => { ws.alive = true; });
+  ws.on('message', d => { try { onWsMessage(ws, d.toString()); } catch (e) { console.error(e); } });
+  ws.on('close', () => {
+    const s = socks.get(user.email); s.delete(ws);
+    if (!s.size) {
+      socks.delete(user.email);
+      const peer = endCall(user.email);
+      if (peer) emit(peer, { t: 'end', from: user.email });
+      announcePresence(user.email, false);
+    }
+  });
+  const online = (db.contacts[user.email] || []).filter(c => socks.has(c));
+  ws.send(JSON.stringify({ t: 'hello', online }));
+  if (first) announcePresence(user.email, true);
+}
+
+/* ---------- HTTP ---------- */
+const SAFE_INLINE = /^(image\/(png|jpe?g|gif|webp|avif|heic|heif|bmp)|video\/(mp4|webm|quicktime|ogg|x-m4v)|audio\/[a-z0-9.+-]+)$/i;
+
+function serveUpload(req, res, id) {
+  const meta = db.files[id], file = path.join(UPLOAD_DIR, id);
+  if (!meta || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
+  const size = fs.statSync(file).size;
+  const inline = SAFE_INLINE.test(meta.type);
+  const headers = {
+    'Content-Type': inline ? meta.type : 'application/octet-stream',
+    'Content-Disposition': (inline ? 'inline' : 'attachment') + `; filename*=UTF-8''${encodeURIComponent(meta.name)}`,
+    'X-Content-Type-Options': 'nosniff',
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'private, max-age=86400'
+  };
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (range) {
+    let start = range[1] ? parseInt(range[1], 10) : 0;
+    let end = range[2] ? parseInt(range[2], 10) : size - 1;
+    if (!range[1] && range[2]) { start = Math.max(0, size - parseInt(range[2], 10)); end = size - 1; }
+    end = Math.min(end, size - 1);
+    if (start > end || start >= size) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }); return res.end(); }
+    res.writeHead(206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1 });
+    return fs.createReadStream(file, { start, end }).pipe(res);
+  }
+  res.writeHead(200, { ...headers, 'Content-Length': size });
+  fs.createReadStream(file).pipe(res);
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url, 'http://x');
+    const p = url.pathname;
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+
+    if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      return res.end(INDEX_HTML);
+    }
+    if (p === '/health') return send(res, 200, { ok: true });
+    if (req.method === 'GET' && p.startsWith('/uploads/')) {
+      const id = p.slice(9);
+      if (!/^[a-f0-9]{48}$/.test(id)) { res.writeHead(404); return res.end(); }
+      return serveUpload(req, res, id);
+    }
+    if (req.method === 'GET' && p === '/api/config') {
+      return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID, iceServers: iceServers() });
+    }
+
+    /* --- comptes --- */
+    if (req.method === 'POST' && (p === '/api/signup' || p === '/api/login' || p === '/api/google')) {
+      if (limited(req)) return send(res, 429, { error: 'Trop de tentatives, réessaie dans une minute.' });
+      const b = await readJson(req);
+
+      if (p === '/api/signup') {
+        const name = String(b.name || '').trim().slice(0, 40);
+        const email = String(b.email || '').trim().toLowerCase();
+        const password = String(b.password || '');
+        if (!name) return send(res, 400, { error: 'Entre ton nom.' });
+        if (!EMAIL_RE.test(email)) return send(res, 400, { error: 'Adresse e-mail invalide.' });
+        if (password.length < 6 || password.length > 200) return send(res, 400, { error: 'Le mot de passe doit contenir au moins 6 caractères.' });
+        if (db.users[email]) return send(res, 409, { error: 'Un compte existe déjà avec cet e-mail. Connecte-toi.' });
+        const salt = crypto.randomBytes(16).toString('hex');
+        db.users[email] = { email, name, salt, hash: await hashPw(password, salt), created: Date.now() };
+        db.contacts[email] = db.contacts[email] || [];
+        save();
+        return send(res, 200, { token: newSession(email), user: pub(db.users[email]) });
+      }
+
+      if (p === '/api/login') {
+        const email = String(b.email || '').trim().toLowerCase();
+        const u = db.users[email];
+        if (!u) return send(res, 401, { error: "Aucun compte avec cet e-mail. Crée un compte d'abord." });
+        if (!u.hash) return send(res, 401, { error: 'Ce compte utilise Google. Clique sur « Continuer avec Google ».' });
+        const h = Buffer.from(await hashPw(String(b.password || ''), u.salt), 'hex');
+        if (!crypto.timingSafeEqual(h, Buffer.from(u.hash, 'hex'))) return send(res, 401, { error: 'Mot de passe incorrect.' });
+        return send(res, 200, { token: newSession(email), user: pub(u) });
+      }
+
+      // Google
+      if (!GOOGLE_CLIENT_ID) return send(res, 400, { error: "La connexion Google n'est pas configurée sur le serveur." });
+      const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(String(b.credential || '')));
+      const g = await r.json().catch(() => ({}));
+      if (!r.ok || g.aud !== GOOGLE_CLIENT_ID || String(g.email_verified) !== 'true' || !g.email) {
+        return send(res, 401, { error: 'Connexion Google refusée.' });
+      }
+      const email = g.email.toLowerCase();
+      if (!db.users[email]) {
+        db.users[email] = { email, name: String(g.name || email.split('@')[0]).slice(0, 40), google: true, created: Date.now() };
+        db.contacts[email] = db.contacts[email] || [];
+        save();
+      }
+      return send(res, 200, { token: newSession(email), user: pub(db.users[email]) });
+    }
+
+    /* --- routes protégées --- */
+    if (p.startsWith('/api/') || p === '/upload') {
+      const user = sessionUser(tokenOf(req, url));
+      if (!user) return send(res, 401, { error: 'Session expirée, reconnecte-toi.' });
+
+      if (req.method === 'GET' && p === '/api/me') {
+        const contacts = (db.contacts[user.email] || []).filter(e => db.users[e]).map(e => pub(db.users[e]));
+        return send(res, 200, { user: pub(user), contacts });
+      }
+      if (req.method === 'GET' && p === '/api/history') {
+        const list = db.messages.filter(m => m.from === user.email || m.to === user.email).slice(-3000);
+        return send(res, 200, { messages: list });
+      }
+      if (req.method === 'POST' && p === '/api/contacts') {
+        const b = await readJson(req);
+        const email = String(b.email || '').trim().toLowerCase();
+        if (email === user.email) return send(res, 400, { error: "C'est ton propre e-mail." });
+        const target = db.users[email];
+        if (!target) return send(res, 404, { error: "Cette personne n'a pas encore de compte." });
+        linkContacts(user.email, email);
+        emit(email, { t: 'contact', contact: pub(user), online: socks.has(user.email) });
+        return send(res, 200, { contact: pub(target), online: socks.has(email) });
+      }
+      if (req.method === 'POST' && p === '/api/logout') {
+        delete db.sessions[tokenOf(req, url)]; save();
+        return send(res, 200, { ok: true });
+      }
+      if (req.method === 'POST' && p === '/upload') {
+        const buf = await readBody(req, MAX_UPLOAD);
+        if (!buf.length) return send(res, 400, { error: 'Fichier vide.' });
+        const id = crypto.randomBytes(24).toString('hex');
+        const name = path.basename(String(url.searchParams.get('name') || 'fichier')).slice(0, 120) || 'fichier';
+        const type = String(url.searchParams.get('type') || req.headers['content-type'] || 'application/octet-stream').slice(0, 100);
+        fs.writeFileSync(path.join(UPLOAD_DIR, id), buf);
+        db.files[id] = { name, type, size: buf.length, owner: user.email };
+        save();
+        return send(res, 200, { url: '/uploads/' + id, name, type, size: buf.length });
+      }
+    }
+    send(res, 404, { error: 'Introuvable' });
+  } catch (e) {
+    if (e && e.code === 413) return send(res, 413, { error: 'Fichier trop gros (25 Mo maximum).' });
+    console.error(e);
+    if (!res.headersSent) send(res, 500, { error: 'Erreur serveur' });
+  }
+});
+
+const wss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
+server.on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url, 'http://x');
+  const user = url.pathname === '/ws' ? sessionUser(url.searchParams.get('token') || '') : null;
+  if (!user) { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); return socket.destroy(); }
+  wss.handleUpgrade(req, socket, head, ws => onWsConnection(ws, user));
+});
+// ping régulier : garde la connexion vivante derrière le proxy de Render et nettoie les connexions mortes
+setInterval(() => {
+  for (const set of socks.values()) for (const ws of set) {
+    if (!ws.alive) { ws.terminate(); continue; }
+    ws.alive = false; ws.ping();
+  }
+}, 25000);
+
+server.listen(PORT, '0.0.0.0', () => console.log('Discuter écoute sur le port ' + PORT));
